@@ -32,6 +32,7 @@ import (
 	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	conditions "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/kubectl"
@@ -271,12 +272,17 @@ func (c *Client) WatchUntilReady(namespace string, reader io.Reader, timeout int
 }
 
 func perform(c *Client, namespace string, reader io.Reader, fn ResourceActorFunc) error {
+
 	infos, err := c.Build(namespace, reader)
 	switch {
 	case err != nil:
 		return err
 	case len(infos) == 0:
 		return ErrNoObjectsVisited
+	}
+
+	if err != nil {
+		return err
 	}
 	for _, info := range infos {
 		if err := fn(info); err != nil {
@@ -449,5 +455,45 @@ func scrubValidationError(err error) error {
 	if strings.Contains(err.Error(), stopValidateMessage) {
 		return goerrors.New(strings.Replace(err.Error(), "; "+stopValidateMessage, "", -1))
 	}
+	return err
+}
+
+func (c *Client) WaitAndGetCompletedPodStatus(namespace string, reader io.Reader, timeout time.Duration) (api.PodPhase, error) {
+	infos, err := c.Build(namespace, reader)
+	if err != nil {
+		return api.PodUnknown, err
+	}
+	info := infos[0]
+
+	// TODO: should we be checking kind before hand? probably yes.
+	// TODO: add validation to linter: any manifest with a test hook has to be a pod kind?
+	kind := info.Mapping.GroupVersionKind.Kind
+	if kind != "Pod" {
+		return api.PodUnknown, fmt.Errorf("%s is not a Pod", info.Name)
+	}
+
+	if err := watchPodUntilComplete(timeout, info); err != nil {
+		return api.PodUnknown, err
+	}
+
+	if err := info.Get(); err != nil {
+		return api.PodUnknown, err
+	}
+	status := info.Object.(*api.Pod).Status.Phase
+
+	return status, nil
+}
+
+func watchPodUntilComplete(timeout time.Duration, info *resource.Info) error {
+	w, err := resource.NewHelper(info.Client, info.Mapping).WatchSingle(info.Namespace, info.Name, info.ResourceVersion)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Watching pod %s for completion with timeout of %v", info.Name, timeout)
+	_, err = watch.Until(timeout, w, func(e watch.Event) (bool, error) {
+		return conditions.PodCompleted(e)
+	})
+
 	return err
 }
