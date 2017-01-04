@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{.Release.Name}}-service-test"
+  annotations:
+    "helm.sh/hook": test
+spec:
+  template:
+    metadata:
+      name: "{{.Release.Name}}-service-test"
+    spec:
+      containers:
+        - name: curl
+          image: radial/busyboxplus:curl
+          command: ['curl']
+          args:  [ '{{ template "fullname" .}}:{{default 80 .Values.httpPort}}' ]
+      restartPolicy: Never
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{.Release.Name}}-service-failing-test"
+  annotations:
+    "helm.sh/hook": test
+spec:
+  template:
+    metadata:
+      name: "{{.Release.Name}}-service-failing-test"
+    spec:
+      containers:
+        - name: curl
+          image: radial/busyboxplus:curl
+          command: ['curl']
+          args:  [ '{{ template "fullname" .}}-service:{{default 80 .Values.httpPort}}' ]
+      restartPolicy: Never
