@@ -1021,6 +1021,7 @@ func (s *ReleaseServer) RunReleaseTest(c ctx.Context, req *services.TestReleaseR
 		return nil, err
 	}
 
+	r.TestSuite = testSuite
 	res.Result = testSuite
 
 	return res, nil

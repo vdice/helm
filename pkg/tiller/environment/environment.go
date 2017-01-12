@@ -24,6 +24,7 @@ package environment
 
 import (
 	"io"
+	"time"
 
 	"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/engine"
@@ -31,6 +32,7 @@ import (
 	"k8s.io/helm/pkg/proto/hapi/chart"
 	"k8s.io/helm/pkg/storage"
 	"k8s.io/helm/pkg/storage/driver"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 )
 
@@ -135,6 +137,9 @@ type KubeClient interface {
 	Update(namespace string, originalReader, modifiedReader io.Reader, recreate bool) error
 
 	Build(namespace string, reader io.Reader) ([]*resource.Info, error)
+
+	//TODO: insert description
+	WaitAndGetCompletedPodStatus(namespace string, reader io.Reader, timeout time.Duration) (api.PodPhase, error)
 }
 
 // PrintingKubeClient implements KubeClient, but simply prints the reader to

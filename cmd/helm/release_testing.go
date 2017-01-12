@@ -78,6 +78,7 @@ func (t *releaseTestCmd) run() error {
 	table := uitable.New()
 	table.MaxColWidth = 50
 	table.AddRow("NAME", "Result", "Info")
+	//TODO: change Result to Suite
 	for _, r := range res.Result.Results {
 		table.AddRow(r.Name, r.Status, r.Info)
 	}
