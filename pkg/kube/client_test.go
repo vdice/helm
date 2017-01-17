@@ -18,6 +18,7 @@ package kube
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -33,6 +34,8 @@ import (
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/watch"
+	watchjson "k8s.io/kubernetes/pkg/watch/json"
 )
 
 func objBody(codec runtime.Codec, obj runtime.Object) io.ReadCloser {
@@ -40,6 +43,10 @@ func objBody(codec runtime.Codec, obj runtime.Object) io.ReadCloser {
 }
 
 func newPod(name string) api.Pod {
+	return newPodWithStatus(name, api.PodStatus{})
+}
+
+func newPodWithStatus(name string, status api.PodStatus) api.Pod {
 	return api.Pod{
 		ObjectMeta: api.ObjectMeta{Name: name},
 		Spec: api.PodSpec{
@@ -49,6 +56,7 @@ func newPod(name string) api.Pod {
 				Ports: []api.ContainerPort{{Name: "http", ContainerPort: 80}},
 			}},
 		},
+		Status: status,
 	}
 }
 
@@ -75,6 +83,32 @@ func newResponse(code int, obj runtime.Object) (*http.Response, error) {
 	header.Set("Content-Type", runtime.ContentTypeJSON)
 	body := ioutil.NopCloser(bytes.NewReader([]byte(runtime.EncodeOrDie(testapi.Default.Codec(), obj))))
 	return &http.Response{StatusCode: code, Header: header, Body: body}, nil
+}
+
+func newEventResponse(code int, e *watch.Event) (*http.Response, error) {
+	dispatchedEvent, err := encodeAndMarshalEvent(e)
+	if err != nil {
+		return nil, err
+	}
+
+	header := http.Header{}
+	header.Set("Content-Type", runtime.ContentTypeJSON)
+	body := ioutil.NopCloser(bytes.NewReader(dispatchedEvent))
+	return &http.Response{StatusCode: 200, Header: header, Body: body}, nil
+}
+
+func encodeAndMarshalEvent(e *watch.Event) ([]byte, error) {
+	encodedEvent, err := watchjson.Object(testapi.Default.Codec(), e)
+	if err != nil {
+		return nil, err
+	}
+
+	marshaledEvent, err := json.Marshal(encodedEvent)
+	if err != nil {
+		return nil, err
+	}
+
+	return marshaledEvent, nil
 }
 
 func TestUpdate(t *testing.T) {
@@ -210,48 +244,69 @@ func TestPerform(t *testing.T) {
 	}
 }
 
-func TestWaitAndGetCompletedPodStatus(t *testing.T) {
-	f, tf, codec, ns := cmdtesting.NewAPIFactory()
-	actions := make(map[string]string)
-	testPodList := newPodList("bestpod")
-
-	tf.Client = &fake.RESTClient{
-		NegotiatedSerializer: ns,
-		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-			p, m := req.URL.Path, req.Method
-			actions[p] = m
-			count := 0
-			switch {
-			case p == "/namespaces/test/pods/bestpod" && m == "GET":
-				return newResponse(200, &testPodList.Items[0])
-			case p == "/watch/namespaces/test/pods/bestpod" && m == "GET":
-				//TODO: fix response
-				count = count + 1
-				if count == 1 {
-					//returns event running
-					return newResponse(200, &testPodList.Items[0])
-				}
-				if count == 2 {
-					//return event succeeded
-					return newResponse(200, &testPodList.Items[0])
-				}
-			default:
-				t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
-				return nil, nil
-			}
-		}),
+func TestWaitAndGetCompletedPodPhase(t *testing.T) {
+	tests := []struct {
+		podPhase      api.PodPhase
+		expectedPhase api.PodPhase
+		err           bool
+		errMessage    string
+	}{
+		{
+			podPhase:      api.PodPending,
+			expectedPhase: api.PodUnknown,
+			err:           true,
+			errMessage:    "timed out waiting for the condition",
+		}, {
+			podPhase:      api.PodRunning,
+			expectedPhase: api.PodUnknown,
+			err:           true,
+			errMessage:    "timed out waiting for the condition",
+		}, {
+			podPhase:      api.PodSucceeded,
+			expectedPhase: api.PodSucceeded,
+		}, {
+			podPhase:      api.PodFailed,
+			expectedPhase: api.PodFailed,
+		},
 	}
 
-	c := &Client{Factory: f}
-	//stub watchUntil to return no error
+	for _, tt := range tests {
+		f, tf, codec, ns := cmdtesting.NewAPIFactory()
+		actions := make(map[string]string)
 
-	status, err := c.WaitAndGetCompletedPodStatus("test", objBody(codec, &testPodList), 30*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+		var testPodList api.PodList
+		testPodList.Items = append(testPodList.Items, newPodWithStatus("bestpod", api.PodStatus{Phase: tt.podPhase}))
 
-	if status != api.PodSucceeded {
-		t.Fatal("Expected %s, got %s", api.PodSucceeded, status)
+		tf.Client = &fake.RESTClient{
+			NegotiatedSerializer: ns,
+			Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+				p, m := req.URL.Path, req.Method
+				actions[p] = m
+				switch {
+				case p == "/namespaces/test/pods/bestpod" && m == "GET":
+					return newResponse(200, &testPodList.Items[0])
+				case p == "/watch/namespaces/test/pods/bestpod" && m == "GET":
+					event := watch.Event{Type: watch.Added, Object: &testPodList.Items[0]}
+					return newEventResponse(200, &event)
+				default:
+					t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
+					return nil, nil
+				}
+			}),
+		}
+
+		c := &Client{Factory: f}
+
+		phase, err := c.WaitAndGetCompletedPodPhase("test", objBody(codec, &testPodList), 1*time.Second)
+		if (err != nil) != tt.err {
+			t.Fatalf("Expected error but there was none.")
+		}
+		if err != nil && err.Error() != tt.errMessage {
+			t.Fatalf("Expected error %s, got %s", tt.errMessage, err.Error())
+		}
+		if phase != tt.expectedPhase {
+			t.Fatalf("Expected pod phase %s, got %s", tt.expectedPhase, phase)
+		}
 	}
 }
 

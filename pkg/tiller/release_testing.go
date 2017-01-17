@@ -70,7 +70,7 @@ func runReleaseTestSuite(hooks []*release.Hook, kube environment.KubeClient, nam
 		if resourceCreated {
 			b.Reset()
 			b.WriteString(h)
-			status, err = kube.WaitAndGetCompletedPodStatus(namespace, b, time.Duration(timeout)*time.Second)
+			status, err = kube.WaitAndGetCompletedPodPhase(namespace, b, time.Duration(timeout)*time.Second)
 			if err != nil {
 				log.Printf("Error getting status for %s(%s): %s", ts.Name, sh.Kind, err)
 				ts.Info = err.Error()
@@ -123,7 +123,7 @@ func filterTests(hooks []*release.Hook, releaseName string) ([]*release.Hook, er
 	}
 
 	//TODO: probably don't need to check found
-	if found == false && len(testHooks) == 0 {
+	if !found && len(testHooks) == 0 {
 		return nil, notFoundErr
 	}
 
