@@ -17,6 +17,7 @@ syntax = "proto3";
 package hapi.release;
 
 import "google/protobuf/any.proto";
+import "hapi/release/test_suite.proto";
 
 option go_package = "release";
 
@@ -46,4 +47,7 @@ message Status {
 
         // Contains the rendered templates/NOTES.txt if available
         string notes = 4;
+
+        // TestSuite provides results on the last test suite run on a release
+        hapi.release.TestSuite test_suite = 5;
 }

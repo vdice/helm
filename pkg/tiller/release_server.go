@@ -245,6 +245,7 @@ func (s *ReleaseServer) GetReleaseStatus(c ctx.Context, req *services.GetRelease
 		return nil, err
 	}
 	rel.Info.Status.Resources = resp
+
 	return statusResp, nil
 }
 
@@ -1043,7 +1044,7 @@ func validateManifest(c environment.KubeClient, ns string, manifest []byte) erro
 	return err
 }
 
-// RunTestRelease runs a pre-defined test on a given release
+// RunReleaseTest runs a pre-defined test on a given release
 func (s *ReleaseServer) RunReleaseTest(req *services.TestReleaseRequest, stream services.ReleaseService_RunReleaseTestServer) error {
 
 	if !ValidName.MatchString(req.Name) {
@@ -1057,6 +1058,9 @@ func (s *ReleaseServer) RunReleaseTest(req *services.TestReleaseRequest, stream 
 	}
 
 	tests, err := prepareTests(rel.Hooks, rel.Name)
+	if err != nil {
+		return err
+	}
 	kubeCli := s.env.KubeClient
 
 	testSuite, err := runReleaseTests(tests, rel, kubeCli, stream, req.Timeout)
@@ -1064,7 +1068,8 @@ func (s *ReleaseServer) RunReleaseTest(req *services.TestReleaseRequest, stream 
 		return err
 	}
 
-	rel.TestSuite = testSuite
+	rel.Info.Status.TestSuite = testSuite
+	s.recordRelease(rel, true)
 
 	return nil
 }

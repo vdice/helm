@@ -92,6 +92,7 @@ func runReleaseTests(tests []string, rel *release.Release, kube environment.Kube
 					return nil, err
 				}
 			}
+			ts.CompletedAt = timeconv.Now()
 		}
 
 		// TODO: maybe better suited as a switch statement and include
@@ -118,6 +119,7 @@ func runReleaseTests(tests []string, rel *release.Release, kube environment.Kube
 	//TODO: delete flag
 	log.Printf("Finished running test suite for %s", rel.Name)
 
+	suite.CompletedAt = timeconv.Now()
 	return suite, nil
 }
 
