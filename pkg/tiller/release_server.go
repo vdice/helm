@@ -1071,5 +1071,12 @@ func (s *ReleaseServer) RunReleaseTest(req *services.TestReleaseRequest, stream 
 	rel.Info.Status.TestSuite = testSuite
 	s.recordRelease(rel, true)
 
+	if req.Cleanup {
+		// TODO: actual cleanup logic here
+		// if err := kubeCli.Delete(rel.Namespace, TODO_ioReader); err != nil {
+		// 	return err
+		// }
+	}
+
 	return nil
 }

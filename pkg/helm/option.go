@@ -176,7 +176,7 @@ func DeleteTimeout(timeout int64) DeleteOption {
 	}
 }
 
-// TestTimeout specifies the number of seconds before kubernetes calls timeout
+// ReleaseTestTimeout specifies the number of seconds before kubernetes calls timeout
 func ReleaseTestTimeout(timeout int64) ReleaseTestOption {
 	return func(opts *options) {
 		opts.testReq.Timeout = timeout
@@ -356,3 +356,10 @@ func NewContext() context.Context {
 // ReleaseTestOption allows configuring optional request data for
 // issuing a TestRelease rpc.
 type ReleaseTestOption func(*options)
+
+// ReleaseTestCleanup is a boolean value representing whether to cleanup test pods
+func ReleaseTestCleanup(cleanup bool) ReleaseTestOption {
+	return func(opts *options) {
+		opts.testReq.Cleanup = cleanup
+	}
+}
