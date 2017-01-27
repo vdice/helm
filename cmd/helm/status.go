@@ -122,14 +122,15 @@ func PrintStatus(out io.Writer, res *services.GetReleaseStatusResponse) {
 func formatTestResults(results []*release.TestRun) string {
 	tbl := uitable.New()
 	tbl.MaxColWidth = 50
-	tbl.AddRow("TEST", "STATUS", "STARTED", "COMPLETED")
+	tbl.AddRow("TEST", "STATUS", "INFO", "STARTED", "COMPLETED")
 	for i := 0; i < len(results); i++ {
 		r := results[i]
 		n := r.Name
 		s := strutil.PadRight(r.Status.String(), 10, ' ')
+		i := r.Info
 		ts := timeconv.String(r.StartedAt)
 		tc := timeconv.String(r.CompletedAt)
-		tbl.AddRow(n, s, ts, tc)
+		tbl.AddRow(n, s, i, ts, tc)
 	}
 	return tbl.String()
 }
